@@ -1,0 +1,73 @@
+# Multi-stage build for TypeScript FeathersJS application
+
+# Build stage
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy all source files first
+COPY . .
+
+# If package.json doesn't exist, create it with the documented dependencies
+RUN if [ ! -f package.json ]; then \
+  printf '{\n\
+  "name": "feathersjs-app",\n\
+  "version": "1.0.0",\n\
+  "description": "A TypeScript-based application using FeathersJS framework",\n\
+  "main": "app.ts",\n\
+  "scripts": {\n\
+    "start": "ts-node app.ts",\n\
+    "test": "echo \\"Error: no test specified\\" && exit 1"\n\
+  },\n\
+  "dependencies": {\n\
+    "@feathersjs/feathers": "^5.0.0",\n\
+    "@feathersjs/koa": "^5.0.0",\n\
+    "@feathersjs/socketio": "^5.0.0"\n\
+  },\n\
+  "devDependencies": {\n\
+    "ts-node": "^10.9.1",\n\
+    "typescript": "^4.9.4"\n\
+  },\n\
+  "license": "MIT"\n\
+}\n' > package.json; \
+fi
+
+# If tsconfig.json doesn't exist, create it with the documented configuration
+RUN if [ ! -f tsconfig.json ]; then \
+  printf '{\n\
+  "compilerOptions": {\n\
+    "target": "ES2020",\n\
+    "module": "commonjs",\n\
+    "strict": true,\n\
+    "esModuleInterop": true,\n\
+    "forceConsistentCasingInFileNames": true,\n\
+    "skipLibCheck": true\n\
+  }\n\
+}\n' > tsconfig.json; \
+fi
+
+# Install all dependencies
+RUN npm install && \
+    npm cache clean --force
+
+# Production stage
+FROM node:18-alpine AS production
+
+WORKDIR /app
+
+# Copy package.json and tsconfig.json from builder
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/tsconfig.json ./
+
+# Install all dependencies (including ts-node and typescript for runtime)
+RUN npm install && \
+    npm cache clean --force
+
+# Copy application files from builder
+COPY --from=builder /app/*.ts ./
+
+# Expose common ports for Koa and Socket.IO
+EXPOSE 3000
+
+# Run the application
+CMD ["npm", "start"]
